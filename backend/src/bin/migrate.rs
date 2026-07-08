@@ -1,5 +1,6 @@
 use clap::Parser;
 use postgres_native_tls::MakeTlsConnector;
+use std::env;
 use time::{Date, Month};
 use turso::{params, Builder};
 
@@ -16,25 +17,44 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    dotenvy::from_filename("../.env").ok();
+    dotenvy::dotenv().ok();
+
     let args = Args::parse();
     let mut tls_builder = native_tls::TlsConnector::builder();
     if args.danger_accept_invalid_certs {
         tls_builder.danger_accept_invalid_certs(true);
     }
     let tls = tls_builder.build()?;
+    eprintln!("connecting to postgres");
     let tls = MakeTlsConnector::new(tls);
     let (pg, connection) = tokio_postgres::connect(&args.pg, tls).await?;
+    eprintln!("connected to postgres");
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("postgres connection error: {e}");
         }
     });
 
-    let db = Builder::new_local(&args.db).build().await?;
+    eprintln!("opening local turso db");
+    let mut builder = Builder::new_local(&args.db);
+    let db_key = env::var("DB_ENCRYPTION_KEY").unwrap_or_default();
+    if !db_key.trim().is_empty() {
+        builder = builder
+            .experimental_encryption(true)
+            .with_encryption(turso::EncryptionOpts {
+                cipher: "aes256gcm".to_string(),
+                hexkey: db_key.trim().to_string(),
+            });
+    }
+    let db = builder.build().await?;
     let conn = db.connect()?;
     conn.execute_batch(include_str!("../../migrations/0001_init.sql"))
         .await?;
+    eprintln!("local schema ready");
+    conn.execute_batch("BEGIN").await?;
 
+    let mut users = 0;
     for row in pg
         .query(
             "SELECT id::text,email,encrypted_password,created_at::text FROM auth.users",
@@ -57,8 +77,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         )
         .await?;
+        users += 1;
     }
+    eprintln!("imported users: {users}");
 
+    let mut books = 0;
     for row in pg
         .query(
             "SELECT id::text,book_name,owner::text FROM public.books",
@@ -79,8 +102,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         )
         .await?;
+        books += 1;
     }
+    eprintln!("imported books: {books}");
 
+    let mut members = 0;
     for row in pg
         .query(
             "SELECT id::text,\"user\"::text,book::text FROM public.user_connections",
@@ -101,8 +127,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         )
         .await?;
+        members += 1;
     }
+    eprintln!("imported book_members: {members}");
 
+    let mut quotes = 0;
     for row in pg
         .query(
             "SELECT id::text,person,quote,date::text,book::text,\"user\"::text FROM public.quotes",
@@ -129,7 +158,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         )
         .await?;
+        quotes += 1;
+        if quotes % 100 == 0 {
+            eprintln!("imported quotes: {quotes}");
+        }
     }
+    eprintln!("imported quotes: {quotes}");
+    conn.execute_batch("COMMIT").await?;
+    let mut checkpoint = conn.query("PRAGMA wal_checkpoint(TRUNCATE)", ()).await?;
+    while checkpoint.next().await?.is_some() {}
 
     Ok(())
 }
