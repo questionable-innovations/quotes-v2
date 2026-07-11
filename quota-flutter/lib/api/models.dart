@@ -45,6 +45,45 @@ class Book {
         isOwner: json['is_owner'] as bool? ?? false,
         quoteCount: (json['quote_count'] as num?)?.toInt() ?? 0,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'owner': {'id': ownerId, 'email': ownerEmail},
+        'is_owner': isOwner,
+        'quote_count': quoteCount,
+      };
+}
+
+class Attachment {
+  final String id;
+  final String filename;
+  final String contentType;
+  final int sizeBytes;
+
+  Attachment({
+    required this.id,
+    required this.filename,
+    required this.contentType,
+    required this.sizeBytes,
+  });
+
+  bool get isImage => contentType.startsWith('image/');
+
+  factory Attachment.fromJson(Map<String, dynamic> json) => Attachment(
+        id: json['id'] as String,
+        filename: json['filename'] as String? ?? 'attachment',
+        contentType:
+            json['content_type'] as String? ?? 'application/octet-stream',
+        sizeBytes: (json['size_bytes'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'filename': filename,
+        'content_type': contentType,
+        'size_bytes': sizeBytes,
+      };
 }
 
 class Quote {
@@ -54,6 +93,7 @@ class Quote {
   final String quote;
   final DateTime date;
   final String? createdBy;
+  final List<Attachment> attachments;
 
   Quote({
     required this.id,
@@ -62,6 +102,7 @@ class Quote {
     required this.quote,
     required this.date,
     this.createdBy,
+    this.attachments = const [],
   });
 
   factory Quote.fromJson(Map<String, dynamic> json, {required String bookId}) =>
@@ -73,6 +114,28 @@ class Quote {
         date: DateTime.tryParse(json['date'] as String? ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
         createdBy: json['created_by'] as String?,
+        attachments: (json['attachments'] as List<dynamic>? ?? [])
+            .map((e) => Attachment.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'person': person,
+        'quote': quote,
+        'date': date.toIso8601String(),
+        'created_by': createdBy,
+        'attachments': attachments.map((a) => a.toJson()).toList(),
+      };
+
+  Quote withAttachments(List<Attachment> attachments) => Quote(
+        id: id,
+        book: book,
+        person: person,
+        quote: quote,
+        date: date,
+        createdBy: createdBy,
+        attachments: attachments,
       );
 }
 
@@ -99,6 +162,46 @@ class Invite {
         id: json['id'] as String,
         email: json['email'] as String,
         expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? ''),
+      );
+}
+
+class ShareLink {
+  final String id;
+  final String url;
+  final DateTime? expiresAt;
+  final int? maxUses;
+  final int uses;
+  final bool revoked;
+
+  ShareLink({
+    required this.id,
+    required this.url,
+    this.expiresAt,
+    this.maxUses,
+    required this.uses,
+    required this.revoked,
+  });
+
+  factory ShareLink.fromJson(Map<String, dynamic> json) => ShareLink(
+        id: json['id'] as String,
+        url: json['url'] as String? ?? '',
+        expiresAt: DateTime.tryParse(json['expires_at'] as String? ?? ''),
+        maxUses: (json['max_uses'] as num?)?.toInt(),
+        uses: (json['uses'] as num?)?.toInt() ?? 0,
+        revoked: json['revoked'] as bool? ?? false,
+      );
+}
+
+/// Public preview of a share link's target book.
+class SharePreview {
+  final String? bookName;
+  final String ownerEmail;
+
+  SharePreview({this.bookName, required this.ownerEmail});
+
+  factory SharePreview.fromJson(Map<String, dynamic> json) => SharePreview(
+        bookName: json['book_name'] as String?,
+        ownerEmail: json['owner_email'] as String? ?? '',
       );
 }
 

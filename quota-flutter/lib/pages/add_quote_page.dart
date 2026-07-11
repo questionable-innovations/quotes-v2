@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:quota/contants.dart';
 import 'package:quota/state/books_model.dart';
 import 'package:quota/state/quotes_model.dart';
+import 'package:quota/utils/pick_images.dart';
 
 class AddQuotePage extends StatefulWidget {
   final String bookId;
@@ -20,6 +22,7 @@ class _AddQuotePageState extends State<AddQuotePage> {
 
   bool formValid = false;
   bool _submitting = false;
+  final List<XFile> _images = [];
 
   @override
   void dispose() {
@@ -28,16 +31,33 @@ class _AddQuotePageState extends State<AddQuotePage> {
     super.dispose();
   }
 
+  Future<void> _pickImages() async {
+    final picked = await pickCompressedImages(context);
+    if (picked.isNotEmpty && mounted) {
+      setState(() => _images.addAll(picked));
+    }
+  }
+
   Future<void> _submit() async {
     setState(() {
       _submitting = true;
     });
     try {
-      await Provider.of<QuotesModel>(context, listen: false).addQuote(
-          widget.bookId,
-          _nameController.text.trim(),
-          _quoteController.text.trim(),
-          date);
+      final model = Provider.of<QuotesModel>(context, listen: false);
+      final quote = await model.addQuote(widget.bookId,
+          _nameController.text.trim(), _quoteController.text.trim(), date);
+      for (final image in _images) {
+        try {
+          final bytes = await image.readAsBytes();
+          await model.uploadAttachment(quote, image.name, bytes);
+        } catch (ex) {
+          if (mounted) {
+            context.showErrorSnackBar(
+                message: errorMessage(
+                    ex, "Quote saved, but ${image.name} failed to upload"));
+          }
+        }
+      }
       if (mounted) {
         // Keep the books page quote count in sync.
         Provider.of<BooksModel>(context, listen: false).refresh(context);
@@ -86,6 +106,59 @@ class _AddQuotePageState extends State<AddQuotePage> {
                         : null,
                   ),
                   const SizedBox(height: 20),
+                  if (_images.isNotEmpty) ...[
+                    SizedBox(
+                      height: 80,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _images.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (context, i) => Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 80,
+                                height: 80,
+                                child: FutureBuilder(
+                                  future: _images[i].readAsBytes(),
+                                  builder: (context, snapshot) =>
+                                      snapshot.hasData
+                                          ? Image.memory(snapshot.data!,
+                                              fit: BoxFit.cover)
+                                          : const SizedBox.shrink(),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: InkWell(
+                                onTap: () =>
+                                    setState(() => _images.removeAt(i)),
+                                child: Container(
+                                  color: Colors.black45,
+                                  padding: const EdgeInsets.all(2),
+                                  child: const Icon(Icons.close,
+                                      size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _submitting ? null : _pickImages,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text("Attach images"),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

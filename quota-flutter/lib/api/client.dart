@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
@@ -195,6 +197,14 @@ class ApiClient {
     }
   }
 
+  /// Re-fetch the current user (e.g. to pick up email verification).
+  Future<User> refreshUser() async {
+    final data = await _request('GET', '/auth/me') as Map<String, dynamic>;
+    currentUser = User.fromJson(data);
+    await _persist();
+    return currentUser!;
+  }
+
   Future<void> requestPasswordReset(String email) =>
       _request('POST', '/auth/request-password-reset',
           auth: false, body: {'email': email});
@@ -280,4 +290,114 @@ class ApiClient {
 
   Future<void> deleteInvite(String bookId, String inviteId) =>
       _request('DELETE', '/books/$bookId/invites/$inviteId');
+
+  // ---- Share links ------------------------------------------------------------
+
+  Future<List<ShareLink>> listShareLinks(String bookId) async {
+    final data =
+        await _request('GET', '/books/$bookId/share-links') as List<dynamic>;
+    return data
+        .map((e) => ShareLink.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ShareLink> createShareLink(String bookId,
+      {DateTime? expiresAt, int? maxUses}) async {
+    final data = await _request('POST', '/books/$bookId/share-links', body: {
+      'expires_at': expiresAt?.toUtc().toIso8601String(),
+      'max_uses': maxUses,
+    });
+    return ShareLink.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> deleteShareLink(String bookId, String linkId) =>
+      _request('DELETE', '/books/$bookId/share-links/$linkId');
+
+  Future<SharePreview> previewShareLink(String token) async {
+    final data = await _request(
+        'GET', '/share-links/${Uri.encodeComponent(token)}',
+        auth: false);
+    return SharePreview.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<void> acceptShareLink(String token) => _request(
+      'POST', '/share-links/${Uri.encodeComponent(token)}/accept');
+
+  // ---- Attachments --------------------------------------------------------------
+
+  Future<Attachment> uploadAttachment(
+      String quoteId, String filename, Uint8List bytes,
+      {String? contentType}) async {
+    Future<http.StreamedResponse> send() {
+      final request = http.MultipartRequest(
+          'POST', Uri.parse('$baseUrl/api/quotes/$quoteId/attachments'));
+      if (_accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $_accessToken';
+      }
+      request.files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename,
+          contentType:
+              MediaType.parse(contentType ?? _guessContentType(filename))));
+      return _http.send(request);
+    }
+
+    var response = await http.Response.fromStream(await send());
+    if (response.statusCode == 401 && _refreshToken != null) {
+      if (!await _tryRefresh()) {
+        await _clearSession();
+        throw ApiException(401, 'Session expired, please sign in again');
+      }
+      response = await http.Response.fromStream(await send());
+    }
+    final decoded = response.body.isEmpty
+        ? null
+        : jsonDecode(utf8.decode(response.bodyBytes));
+    if (response.statusCode >= 400) {
+      final message = (decoded is Map && decoded['error'] is String)
+          ? decoded['error'] as String
+          : 'Upload failed (${response.statusCode})';
+      throw ApiException(response.statusCode, message);
+    }
+    return Attachment.fromJson(decoded as Map<String, dynamic>);
+  }
+
+  /// Download an attachment's raw bytes (authenticated).
+  Future<Uint8List> getAttachmentBytes(String attachmentId) async {
+    var response = await _send('GET', '/attachments/$attachmentId', auth: true);
+    if (response.statusCode == 401 && _refreshToken != null) {
+      if (!await _tryRefresh()) {
+        await _clearSession();
+        throw ApiException(401, 'Session expired, please sign in again');
+      }
+      response = await _send('GET', '/attachments/$attachmentId', auth: true);
+    }
+    if (response.statusCode >= 400) {
+      throw ApiException(
+          response.statusCode, 'Could not load attachment');
+    }
+    return response.bodyBytes;
+  }
+
+  Future<void> deleteAttachment(String attachmentId) =>
+      _request('DELETE', '/attachments/$attachmentId');
+
+  static String _guessContentType(String filename) {
+    final ext = filename.contains('.')
+        ? filename.split('.').last.toLowerCase()
+        : '';
+    switch (ext) {
+      case 'jpg' || 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'heic':
+        return 'image/heic';
+      default:
+        return 'application/octet-stream';
+    }
+  }
 }

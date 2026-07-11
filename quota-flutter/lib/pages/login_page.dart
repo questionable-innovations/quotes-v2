@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart' as provider;
 
 import 'package:quota/api/models.dart';
@@ -49,11 +50,15 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _signIn() => _run(() async {
         await api.signIn(
             _emailController.text.trim(), _passwordController.text);
+        // Tell the platform the credentials worked so password managers
+        // offer to save/update them.
+        TextInput.finishAutofillContext();
       }, "Could not sign in");
 
   Future<void> _signUp() => _run(() async {
         await api.signUp(
             _emailController.text.trim(), _passwordController.text);
+        TextInput.finishAutofillContext();
         if (mounted) {
           context.showSnackBar(
               message: "Account created! Check your email to verify it.");
@@ -92,11 +97,15 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  List<Widget> _emailPasswordFields() => [
+  bool get _canSubmit => _validEmail && _validPassword && !_isLoading;
+
+  List<Widget> _emailPasswordFields({required bool signUp}) => [
         TextFormField(
           controller: _emailController,
-          autofillHints: const [AutofillHints.email],
+          autofillHints: const [AutofillHints.username, AutofillHints.email],
           keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.next,
+          autocorrect: false,
           decoration: const InputDecoration(label: Text("Email")),
           validator: (value) => value != null && emailRegex.hasMatch(value)
               ? null
@@ -105,10 +114,17 @@ class _LoginPageState extends State<LoginPage> {
             _validEmail = emailRegex.hasMatch(value.trim());
           }),
         ),
-        TextField(
+        TextFormField(
             controller: _passwordController,
-            autofillHints: const [AutofillHints.password],
+            autofillHints: [
+              signUp ? AutofillHints.newPassword : AutofillHints.password
+            ],
             obscureText: true,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) {
+              if (!_canSubmit) return;
+              signUp ? _signUp() : _signIn();
+            },
             onChanged: (value) {
               setState(() {
                 _validPassword = value.trim() != "";
@@ -133,14 +149,13 @@ class _LoginPageState extends State<LoginPage> {
           Padding(
               padding: const EdgeInsets.all(15),
               child: Form(
-                  child: Column(
+                  child: AutofillGroup(
+                      child: Column(
                 children: [
-                  ..._emailPasswordFields(),
+                  ..._emailPasswordFields(signUp: false),
                   const SizedBox(height: 10),
                   ElevatedButton(
-                    onPressed: (_validEmail && _validPassword && !_isLoading)
-                        ? _signIn
-                        : null,
+                    onPressed: _canSubmit ? _signIn : null,
                     child: const Text("Sign in"),
                   ),
                   TextButton(
@@ -149,18 +164,17 @@ class _LoginPageState extends State<LoginPage> {
                     child: const Text("Forgot password?"),
                   ),
                 ],
-              ))),
+              )))),
           Padding(
               padding: const EdgeInsets.all(15),
               child: Form(
-                  child: Column(
+                  child: AutofillGroup(
+                      child: Column(
                 children: [
-                  ..._emailPasswordFields(),
+                  ..._emailPasswordFields(signUp: true),
                   const SizedBox(height: 10),
                   ElevatedButton(
-                    onPressed: (_validEmail && _validPassword && !_isLoading)
-                        ? _signUp
-                        : null,
+                    onPressed: _canSubmit ? _signUp : null,
                     child: const Text("Sign up"),
                   ),
                   const Padding(
@@ -168,7 +182,7 @@ class _LoginPageState extends State<LoginPage> {
                     child: Text("Passwords must be at least 8 characters."),
                   ),
                 ],
-              ))),
+              )))),
         ]),
       ));
 }

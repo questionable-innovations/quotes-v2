@@ -12,64 +12,60 @@ class BookWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      child: Card(
-        margin: const EdgeInsets.all(15.0),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 6.0),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(context, "/book", arguments: BookArgs(book.id));
+        },
         child: Padding(
-          padding: const EdgeInsets.all(10.0),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 20.0, vertical: 18.0),
           child: Row(
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Text(
-                      book.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 20.0),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-                    child: Text(
-                      book.ownerEmail,
-                      style: const TextStyle(fontSize: 15),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Padding(
-                padding: const EdgeInsets.all(10),
+              Expanded(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Text(
-                        book.quoteCount.toString(),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 25.0),
-                      ),
+                    Text(
+                      book.name,
+                      style: theme.textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(10, 0, 10, 10),
-                      child: Text(
-                        "quotes",
-                        style: TextStyle(fontSize: 15),
+                    if (!book.isOwner) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        book.ownerEmail,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface
+                                .withValues(alpha: 0.6)),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
+              const SizedBox(width: 12),
+              Text(
+                "${book.quoteCount} ${book.quoteCount == 1 ? 'quote' : 'quotes'}",
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right,
+                  size: 20,
+                  color: colorScheme.onSurface.withValues(alpha: 0.4)),
             ],
           ),
         ),
       ),
-      onTap: () {
-        Navigator.pushNamed(context, "/book", arguments: BookArgs(book.id));
-      },
     );
   }
 }

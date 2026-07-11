@@ -5,6 +5,7 @@ import 'package:provider/provider.dart' as provider;
 import 'package:quota/api/models.dart';
 import 'package:quota/contants.dart';
 import 'package:quota/state/books_model.dart';
+import 'package:quota/widgets/share_links_section.dart';
 
 class SettingsPage extends StatefulWidget {
   final String bookId;
@@ -314,6 +315,10 @@ class _SettingsPageState extends State<SettingsPage> {
             Card(
               margin: const EdgeInsets.fromLTRB(15, 0, 15, 15),
               child: _buildMembersList(),
+            ),
+            Card(
+              margin: const EdgeInsets.fromLTRB(15, 0, 15, 15),
+              child: ShareLinksSection(bookId: book.id),
             ),
             FilledButton.tonal(
                 onPressed: () {

@@ -6,6 +6,7 @@ import 'package:quota/contants.dart';
 import 'package:quota/state/books_model.dart';
 import 'package:quota/state/quotes_model.dart';
 import 'package:quota/widgets/book_args.dart';
+import 'package:quota/widgets/offline_banner.dart';
 import 'package:quota/widgets/quote.dart';
 
 class BookPage extends StatefulWidget {
@@ -112,36 +113,48 @@ class _BookPageState extends State<BookPage> {
                   .pushNamed("/new-quote", arguments: BookArgs(book.id));
             },
           ),
-          body: quotesModel.loading && !quotesModel.hasQuotesForBook(book.id)
-              ? SizedBox(
-                  width: MediaQuery.of(context).size.width,
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [CircularProgressIndicator(), Text("Loading")],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    final model =
-                        Provider.of<QuotesModel>(context, listen: false);
-                    await model.refresh(context, book.id);
-                    if (context.mounted) {
-                      context.showSnackBar(
-                          message:
-                              "Refreshed! Found ${model.quotesForBook(book.id).length} quotes.");
-                    }
-                  },
-                  child: Scrollbar(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 10.0, horizontal: 15.0),
-                      itemBuilder: (BuildContext context, int i) =>
-                          QuoteWidget(quote: filteredQuotes[i], book: book),
-                      itemCount: filteredQuotes.length,
-                    ),
-                  ),
-                ),
+          body: Column(
+            children: [
+              if (quotesModel.offline) const OfflineBanner(),
+              Expanded(
+                child: quotesModel.loading &&
+                        !quotesModel.hasQuotesForBook(book.id)
+                    ? SizedBox(
+                        width: MediaQuery.of(context).size.width,
+                        child: const Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            Text("Loading")
+                          ],
+                        ),
+                      )
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          final model =
+                              Provider.of<QuotesModel>(context, listen: false);
+                          await model.refresh(context, book.id);
+                          if (context.mounted) {
+                            context.showSnackBar(
+                                message:
+                                    "Refreshed! Found ${model.quotesForBook(book.id).length} quotes.");
+                          }
+                        },
+                        child: Scrollbar(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 10.0, horizontal: 15.0),
+                            itemBuilder: (BuildContext context, int i) =>
+                                QuoteWidget(
+                                    quote: filteredQuotes[i], book: book),
+                            itemCount: filteredQuotes.length,
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          ),
         );
       },
     );
