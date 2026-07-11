@@ -45,3 +45,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 /.keystore
+
+# Build-time secrets (--dart-define-from-file)
+secrets.json
